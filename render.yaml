@@ -1,0 +1,93 @@
+# =====================================================================
+# Render Blueprint for the Nivaran AI backend (FastAPI + PostgreSQL).
+# The Next.js frontend is deployed separately on Vercel (root: frontend/).
+#
+# Render → New → Blueprint → pick this repo. Render reads this file and
+# creates everything below. Values marked `sync: false` are NOT stored in
+# git: Render asks you to type them in during setup (or add them later
+# under the service's Environment tab).
+# =====================================================================
+
+services:
+  - type: web
+    name: nivaran-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: singapore
+    # A persistent disk (needed so uploaded photos survive redeploys) requires a paid instance.
+    plan: starter
+    healthCheckPath: /health
+    # The Dockerfile's CMD runs `alembic upgrade head` (creates/updates tables) and then uvicorn.
+    disk:
+      name: nivaran-uploads
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true # Render creates a strong random value; never commit one.
+      # Paste the database's *Internal Database URL* here, changing its start from
+      #   postgresql://          to          postgresql+psycopg://
+      # (the backend uses the psycopg 3 driver; the plain prefix fails to connect).
+      - key: DATABASE_URL
+        sync: false
+      # Your Vercel URL(s), comma-separated, no trailing slash, e.g. https://nivaran-ai.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "8"
+      # AI stays in clearly labeled demo mode until you add a provider + key in the Render dashboard:
+      #   AI_PROVIDER=openai + OPENAI_API_KEY=...   or   AI_PROVIDER=anthropic + ANTHROPIC_API_KEY=...
+      - key: AI_PROVIDER
+        value: demo
+      - key: VISION_PROVIDER
+        value: demo
+      - key: SPEECH_PROVIDER
+        value: demo
+
+  # ---------------------------------------------------------------------
+  # OPTIONAL — hourly automations (follow-ups, escalations, auto-reopen).
+  # The API works without these. To enable: uncomment both blocks, add the
+  # same DATABASE_URL (and AI settings) to the worker, then re-sync.
+  # `-B` runs the beat scheduler inside the worker, so one service is enough.
+  # ---------------------------------------------------------------------
+  # - type: worker
+  #   name: nivaran-celery
+  #   runtime: docker
+  #   rootDir: backend
+  #   dockerfilePath: ./Dockerfile
+  #   dockerContext: .
+  #   region: singapore
+  #   plan: starter
+  #   dockerCommand: celery -A app.celery_app worker -B --loglevel=info
+  #   envVars:
+  #     - key: ENVIRONMENT
+  #       value: production
+  #     - key: DATABASE_URL
+  #       sync: false
+  #     - key: REDIS_URL
+  #       fromService:
+  #         type: keyvalue
+  #         name: nivaran-redis
+  #         property: connectionString
+  #
+  # - type: keyvalue
+  #   name: nivaran-redis
+  #   region: singapore
+  #   plan: free
+  #   ipAllowList: [] # only reachable from your Render services
+
+databases:
+  - name: nivaran-db
+    databaseName: nivaran_ai
+    user: nivaran
+    region: singapore
+    # Free Render Postgres expires after 30 days; switch to a paid plan (or use Neon) for a lasting deploy.
+    plan: free
